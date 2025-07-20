@@ -4,6 +4,9 @@ const admin = require('firebase-admin');
 const app = express();
 const cors = require('cors');
 const PORT = process.env.PORT || 3000;
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+
 
 
 app.use(
@@ -48,7 +51,7 @@ const verifyToken = async (req, res, next) => {
 // ✅ MongoDB Connection
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.dec8mtk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -63,18 +66,86 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
 
-        // await client.connect();
-
         // ✅ all collections name
 
         const userCollection = client.db('rishta_db').collection('users');
         const biodataCollection = client.db('rishta_db').collection('biodatas');
         const contactRequestCollection = client.db('rishta_db').collection('contactRequests');
         const successStoryCollection = client.db('rishta_db').collection('successStories');
+        const addFevoriteCollection = client.db('rishta_db').collection('fevoriets');
         const paymentCollection = client.db('rishta_db').collection('payments');
 
 
-        // ✅ all routes
+
+        // await client.connect();
+
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  payment section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+        //✅  add payment section 
+
+        app.post("/create-payment-intent", async (req, res) => {
+            const { amount } = req.body; // amount in cents (500 = $5)
+
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount,
+                    currency: "usd",
+                    payment_method_types: ["card"],
+                });
+
+                res.send({
+                    clientSecret: paymentIntent.client_secret,
+                });
+            } catch (err) {
+                console.error("Stripe Error:", err);
+                res.status(500).send({ error: err.message });
+            }
+        });
+
+
+
+        // ✅  save payment data and contact request
+
+        app.post("/contact-requests", async (req, res) => {
+            try {
+                const { biodataId, email, transactionId } = req.body;
+
+              
+                if (!biodataId || !email || !transactionId) {
+                    return res.status(400).json({ message: "Required fields missing" });
+                }
+
+             
+                const existing = await contactRequestCollection.findOne({ biodataId, email });
+                if (existing) {
+                    return res.status(409).json({ message: "You have already requested this contact info" });
+                }
+
+              
+                const newRequest = {
+                    biodataId,
+                    email,
+                    transactionId,
+                    status: "pending", 
+                    requestedAt: new Date(),
+                };
+
+             
+                const result = await contactRequestCollection.insertOne(newRequest);
+
+                return res.status(201).json({
+                    message: "Contact request submitted successfully",
+                    requestId: result.insertedId,
+                });
+            } catch (error) {
+                console.error("Error in /contact-requests:", error);
+                return res.status(500).json({ message: "Internal server error" });
+            }
+        });
+
+
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> other route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        
 
         // ✅ get all biodata
 
@@ -82,21 +153,52 @@ async function run() {
             const biodatas = await biodataCollection.find({}).toArray();
             res.send(biodatas);
         });
- 
 
-        // ✅get biodata by email 
+        // ✅ get biodata by id 
+
+        app.get("/biodatabyid/:id", async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await biodataCollection.findOne({ _id: new ObjectId(id) });
+
+                if (!result) {
+                    return res.status(404).send({ message: "Biodata not found" });
+                }
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error retrieving biodata", error });
+            }
+        });
+
+        // ✅ get biodata by email 
 
         app.get("/biodata", async (req, res) => {
             const email = req.query.email;
-           
+
             const biodata = await biodataCollection.findOne({ email });
             if (!biodata) {
-              return res.status(404).send({ success: false, message: "Biodata not found" });
+                return res.status(404).send({ success: false, message: "Biodata not found" });
             }
-          
+
             res.send({ success: true, data: biodata });
-          });
-          
+        });
+
+        // ✅ add to  fevorites 
+
+        app.post("/addfevorites", async (req, res) => {
+
+            const { name, presentDivision, occupation, bioId } = req.body;
+
+            const existingId = await addFevoriteCollection.findOne({ bioId });
+
+            if (existingId) {
+                return res.status(409).json({ message: 'User already exists in favourites' });
+            }
+            const result = await addFevoriteCollection.insertOne({ name, presentDivision, occupation, bioId });
+            res.send(result)
+        })
 
 
         // ✅ add user
@@ -180,15 +282,6 @@ async function run() {
 
             res.send(result);
         });
-
-
-
-
-
-
-
-
-
 
 
 
