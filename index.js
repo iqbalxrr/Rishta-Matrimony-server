@@ -79,7 +79,7 @@ async function run() {
 
         // await client.connect();
 
- // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  payment section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  payment section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         //✅  add payment section 
 
@@ -102,35 +102,54 @@ async function run() {
             }
         });
 
+        // ✅ get contact request data 
 
+        app.get("/all-contact-request", async (req, res) => {
+
+            const result = await contactRequestCollection.find({}).toArray()
+
+            res.send(result);
+        })
+
+        //✅ Admin approve contact request
+        app.patch("/approve-contact/:id", async (req, res) => {
+            const id = req.params.id;
+            const result = await contactRequestCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status: "approved" } }
+            );
+            res.send(result);
+        });
 
         // ✅  save payment data and contact request
 
         app.post("/contact-requests", async (req, res) => {
             try {
-                const { biodataId, email, transactionId } = req.body;
+                const { biodataId, name, email, mobile, transactionId } = req.body;
 
-              
+
                 if (!biodataId || !email || !transactionId) {
                     return res.status(400).json({ message: "Required fields missing" });
                 }
 
-             
+
                 const existing = await contactRequestCollection.findOne({ biodataId, email });
                 if (existing) {
                     return res.status(409).json({ message: "You have already requested this contact info" });
                 }
 
-              
+
                 const newRequest = {
                     biodataId,
+                    name,
                     email,
+                    mobile,
                     transactionId,
-                    status: "pending", 
+                    status: "pending",
                     requestedAt: new Date(),
                 };
 
-             
+
                 const result = await contactRequestCollection.insertOne(newRequest);
 
                 return res.status(201).json({
@@ -143,9 +162,39 @@ async function run() {
             }
         });
 
+        //   ✅ delete 
 
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> other route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        
+        app.delete("/all-contact-request/:id", async (req, res) => {
+            const { id } = req.params;
+            try {
+                const result = await contactRequestCollection.deleteOne({ _id: new ObjectId(id) });
+                if (result.deletedCount > 0) {
+                    return res.status(200).json({ success: true });
+                } else {
+                    return res.status(404).json({ message: "Request not found" });
+                }
+            } catch (error) {
+                console.error("Error deleting request:", error);
+                return res.status(500).json({ message: "Internal server error" });
+            }
+        });
+
+
+
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> get  route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+        // ✅ get all story 
+
+        app.get("/success-story", async (req, res) => {
+            try {
+                const result = await successStoryCollection.find().sort({ _id: -1 }).toArray();
+                res.send(result);
+            } catch (err) {
+                console.error("Error fetching success stories:", err);
+                res.status(500).send({ error: "Server error" });
+            }
+        });
+
 
         // ✅ get all biodata
 
@@ -172,6 +221,7 @@ async function run() {
             }
         });
 
+
         // ✅ get biodata by email 
 
         app.get("/biodata", async (req, res) => {
@@ -185,18 +235,65 @@ async function run() {
             res.send({ success: true, data: biodata });
         });
 
+
+        app.get("/myfevorites", async (req, res) => {
+            
+            const email = req.query.email;
+
+            const result = await addFevoriteCollection.find({ Authemail : email }).toArray();
+
+            res.send(result)
+
+        })
+
+
+        // get premium reuest 
+        app.get("/premium-requests", async (req, res) => {
+            const result = await biodataCollection.find({ premiumRequest: true }).toArray();
+            res.send(result);
+        });
+
+
+
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> post section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+        // ✅ success-story 
+
+
+        app.post("/success-story", async (req, res) => {
+
+            try {
+                const storyData = req.body;
+                // Optional: validate required fields
+                const { selfBioId, partnerBioId, image, review } = storyData;
+
+                if (!selfBioId || !partnerBioId || !image || !review) {
+                    return res.status(400).send({ error: "All fields are required." });
+                }
+
+                const result = await successStoryCollection.insertOne(storyData);
+                res.send({ success: true, insertedId: result.insertedId });
+            } catch (err) {
+                console.error("Error saving success story:", err);
+                res.status(500).send({ error: "Server error" });
+            }
+        });
+
+
+
+
         // ✅ add to  fevorites 
 
         app.post("/addfevorites", async (req, res) => {
 
-            const { name, presentDivision, occupation, bioId } = req.body;
+            const { name, presentDivision, occupation, bioId , Authemail } = req.body;
 
-            const existingId = await addFevoriteCollection.findOne({ bioId });
+            const existingId = await addFevoriteCollection.findOne({ bioId, Authemail });
 
             if (existingId) {
                 return res.status(409).json({ message: 'User already exists in favourites' });
             }
-            const result = await addFevoriteCollection.insertOne({ name, presentDivision, occupation, bioId });
+            const result = await addFevoriteCollection.insertOne({Authemail , name, presentDivision, occupation, bioId });
             res.send(result)
         })
 
@@ -250,18 +347,32 @@ async function run() {
             // ✅ Set default premium flags
             data.isPremium = false;
             data.premiumRequest = false;
+            data.createdAt = new Date();
 
             const result = await biodataCollection.insertOne(data);
             res.send(result);
 
         })
 
-        // ✅request user for premium 
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Update route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+        app.patch("/make-premium/:id", async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const update = {
+                $set: { isPremium: true },
+                $unset: { premiumRequest: "" },
+            };
+            const result = await biodataCollection.updateOne(filter, update);
+            res.send(result);
+        });
+
+        // ✅ ইউজার প্রিমিয়াম রিকুয়েস্ট পাঠাবে
         app.patch("/biodata/request-premium/:id", async (req, res) => {
             const id = parseInt(req.params.id);
 
             const result = await biodataCollection.updateOne(
-                { biodataId: id },
+                { bioId: id },
                 { $set: { premiumRequest: true } }
             );
 
@@ -269,14 +380,12 @@ async function run() {
         });
 
 
-
-        //✅ admin make premium 
-
+        // ✅ এডমিন ইউজারের বায়োডাটা প্রিমিয়াম করে দিবে
         app.patch("/biodata/make-premium/:id", async (req, res) => {
             const id = parseInt(req.params.id);
 
             const result = await biodataCollection.updateOne(
-                { biodataId: id },
+                { bioId: id },
                 { $set: { isPremium: true, premiumRequest: false } }
             );
 
@@ -284,7 +393,22 @@ async function run() {
         });
 
 
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Delete section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+        // DELETE /deletefevorite/:id
+
+        app.delete("/deletefevorite/:id", async (req, res) => {
+            const id = req.params.id;
+            try {
+                const result = await addFevoriteCollection.deleteOne({ _id: new ObjectId(id) });
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({ message: "Favourite not found" });
+                }
+                res.send({ message: "Deleted successfully" });
+            } catch (error) {
+                res.status(500).send({ message: "Internal server error" });
+            }
+        });
 
 
         app.get('/', (req, res) => {
