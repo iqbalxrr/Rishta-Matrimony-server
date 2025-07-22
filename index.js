@@ -104,14 +104,15 @@ async function run() {
 
         // ✅ get contact request data 
 
-        app.get("/all-contact-request", async (req, res) => {
-
-            const result = await contactRequestCollection.find({}).toArray()
-
+        app.get("/all-contact-request/:id", async (req, res) => {
+            const id = req.params.id;
+            const result = await contactRequestCollection.find({ biodataId: id }).toArray();
             res.send(result);
-        })
+        });
+
 
         //✅ Admin approve contact request
+
         app.patch("/approve-contact/:id", async (req, res) => {
             const id = req.params.id;
             const result = await contactRequestCollection.updateOne(
@@ -125,15 +126,15 @@ async function run() {
 
         app.post("/contact-requests", async (req, res) => {
             try {
-                const { biodataId, name, email, mobile, transactionId } = req.body;
+                const { biodataId, requestBioId, requestEmail, requestName, requestMobile, transactionId } = req.body;
 
 
-                if (!biodataId || !email || !transactionId) {
+                if (!biodataId || !requestEmail || !transactionId) {
                     return res.status(400).json({ message: "Required fields missing" });
                 }
 
 
-                const existing = await contactRequestCollection.findOne({ biodataId, email });
+                const existing = await contactRequestCollection.findOne({ biodataId, requestEmail });
                 if (existing) {
                     return res.status(409).json({ message: "You have already requested this contact info" });
                 }
@@ -141,9 +142,10 @@ async function run() {
 
                 const newRequest = {
                     biodataId,
-                    name,
-                    email,
-                    mobile,
+                    requestBioId,
+                    requestEmail,
+                    requestName,
+                    requestMobile,
                     transactionId,
                     status: "pending",
                     requestedAt: new Date(),
@@ -161,6 +163,9 @@ async function run() {
                 return res.status(500).json({ message: "Internal server error" });
             }
         });
+
+
+
 
         //   ✅ delete 
 
@@ -182,6 +187,54 @@ async function run() {
 
 
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> get  route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      
+
+        // getall  user 
+
+        app.get("/users", async (req, res) => {
+            const { name, role, page = 1, limit = 10 } = req.query;
+            const skip = (parseInt(page) - 1) * parseInt(limit);
+          
+            const filter = {};
+            if (name) {
+              filter.name = { $regex: name, $options: "i" }; // case-insensitive search
+            }
+            if (role) {
+              filter.role = role;
+            }
+          
+            const [users, total] = await Promise.all([
+              userCollection.find(filter).skip(skip).limit(parseInt(limit)).toArray(),
+              userCollection.countDocuments(filter),
+            ]);
+          
+            res.send({ users, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
+          });
+
+
+          app.patch("/make-admin/:email", async (req, res) => {
+            const email = req.params.email;
+            const result = await userCollection.updateOne(
+              { email },
+              { $set: { role: "admin" } }
+            );
+            res.send(result);
+          });
+          
+          // Approve Premium Request
+          app.patch("/make-premium/:email", async (req, res) => {
+            const email = req.params.email;
+            const result = await userCollection.updateOne(
+              { email },
+              { $set: { isPremium: true, premiumRequest: false } }
+            );
+            res.send(result);
+          });
+          
+
+          
+
+
 
         // ✅ get all story 
 
@@ -237,10 +290,10 @@ async function run() {
 
 
         app.get("/myfevorites", async (req, res) => {
-            
+
             const email = req.query.email;
 
-            const result = await addFevoriteCollection.find({ Authemail : email }).toArray();
+            const result = await addFevoriteCollection.find({ Authemail: email }).toArray();
 
             res.send(result)
 
@@ -286,30 +339,34 @@ async function run() {
 
         app.post("/addfevorites", async (req, res) => {
 
-            const { name, presentDivision, occupation, bioId , Authemail } = req.body;
+            const { name, presentDivision, occupation, bioId, Authemail } = req.body;
 
             const existingId = await addFevoriteCollection.findOne({ bioId, Authemail });
 
             if (existingId) {
                 return res.status(409).json({ message: 'User already exists in favourites' });
             }
-            const result = await addFevoriteCollection.insertOne({Authemail , name, presentDivision, occupation, bioId });
+            const result = await addFevoriteCollection.insertOne({ Authemail, name, presentDivision, occupation, bioId });
             res.send(result)
         })
 
 
         // ✅ add user
         app.post('/users', async (req, res) => {
-            const { name, email, role } = req.body;
+
+            const data = req.body;
 
             try {
-                const existingUser = await userCollection.findOne({ email });
+                const existingUser = await userCollection.findOne({ email: data.email });
 
                 if (existingUser) {
                     return res.status(409).json({ message: 'User already exists' });
                 }
 
-                const result = await userCollection.insertOne({ name, email, role });
+                data.isPremium = false;
+                data.premiumRequest = false;
+
+                const result = await userCollection.insertOne(data);
                 res.status(201).json({ success: true, insertedId: result.insertedId });
             } catch (err) {
                 res.status(500).json({ message: 'Failed to add user', error: err.message });
@@ -347,6 +404,7 @@ async function run() {
             // ✅ Set default premium flags
             data.isPremium = false;
             data.premiumRequest = false;
+
             data.createdAt = new Date();
 
             const result = await biodataCollection.insertOne(data);
