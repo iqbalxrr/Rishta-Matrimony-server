@@ -73,7 +73,8 @@ async function run() {
         const contactRequestCollection = client.db('rishta_db').collection('contactRequests');
         const successStoryCollection = client.db('rishta_db').collection('successStories');
         const addFevoriteCollection = client.db('rishta_db').collection('fevoriets');
-        const paymentCollection = client.db('rishta_db').collection('payments');
+        const premiumMembersCollection = client.db('rishta_db').collection('premium_members');
+        
 
 
 
@@ -187,52 +188,113 @@ async function run() {
 
 
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> get  route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      
 
-        // getall  user 
+
+        // ✅ Get user by email
+        app.get("/authusers", async (req, res) => {
+
+            const email = req.query.email;
+
+            if (!email) {
+                return res.status(400).send({ message: "Email is required" });
+            }
+
+            try {
+                const user = await userCollection.findOne({ email: email });
+
+                if (!user) {
+                    return res.status(404).send({ message: "User not found" });
+                }
+
+                res.send(user);
+            } catch (error) {
+                res.status(500).send({ message: "Server error", error });
+            }
+        });
+
+
+
 
         app.get("/users", async (req, res) => {
             const { name, role, page = 1, limit = 10 } = req.query;
             const skip = (parseInt(page) - 1) * parseInt(limit);
-          
+
             const filter = {};
             if (name) {
-              filter.name = { $regex: name, $options: "i" }; // case-insensitive search
+                filter.name = { $regex: name, $options: "i" }; // case-insensitive search
             }
             if (role) {
-              filter.role = role;
+                filter.role = role;
             }
-          
+
             const [users, total] = await Promise.all([
-              userCollection.find(filter).skip(skip).limit(parseInt(limit)).toArray(),
-              userCollection.countDocuments(filter),
+                userCollection.find(filter).skip(skip).limit(parseInt(limit)).toArray(),
+                userCollection.countDocuments(filter),
             ]);
-          
+
             res.send({ users, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
-          });
+        });
 
 
-          app.patch("/make-admin/:email", async (req, res) => {
+        // make admin section.................
+
+
+        app.patch("/make-admin/:email", async (req, res) => {
             const email = req.params.email;
             const result = await userCollection.updateOne(
-              { email },
-              { $set: { role: "admin" } }
+                { email },
+                { $set: { role: "admin" } }
             );
             res.send(result);
-          });
-          
-          // Approve Premium Request
-          app.patch("/make-premium/:email", async (req, res) => {
-            const email = req.params.email;
-            const result = await userCollection.updateOne(
-              { email },
-              { $set: { isPremium: true, premiumRequest: false } }
-            );
-            res.send(result);
-          });
-          
+        });
 
-          
+
+        // ✅ Get users who requested premium
+
+        app.get("/requestedpremiumuser", async (req, res) => {
+            try {
+                const result = await userCollection
+                    .find({ premiumRequest: true })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Server error", error });
+            }
+        });
+
+
+
+        // Approve Premium Request my admin
+
+        // ✅ Make user premium and clear the premium request flag
+        app.patch("/make-premium/:email", async (req, res) => {
+            const email = req.params.email;
+
+            if (!email) {
+                return res.status(400).send({ message: "Email is required" });
+            }
+
+            try {
+                const result = await userCollection.updateOne(
+                    { email },
+                    {
+                        $set: { isPremium: true },
+                        $unset: { premiumRequest: "" }
+                    }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ message: "User not found or already premium" });
+                }
+
+                res.send({ message: "User is now premium", result });
+            } catch (error) {
+                res.status(500).send({ message: "Server error", error });
+            }
+        });
+
+
 
 
 
@@ -259,10 +321,12 @@ async function run() {
         // ✅ get biodata by id 
 
         app.get("/biodatabyid/:id", async (req, res) => {
-            const id = req.params.id;
+            const id = Number(req.params.id);
+
+           
 
             try {
-                const result = await biodataCollection.findOne({ _id: new ObjectId(id) });
+                const result = await biodataCollection.findOne({ bioId:id });
 
                 if (!result) {
                     return res.status(404).send({ message: "Biodata not found" });
@@ -289,6 +353,7 @@ async function run() {
         });
 
 
+
         app.get("/myfevorites", async (req, res) => {
 
             const email = req.query.email;
@@ -300,11 +365,11 @@ async function run() {
         })
 
 
-        // get premium reuest 
-        app.get("/premium-requests", async (req, res) => {
-            const result = await biodataCollection.find({ premiumRequest: true }).toArray();
-            res.send(result);
-        });
+        // // get premium reuest 
+        // app.get("/premium-requests", async (req, res) => {
+        //     const result = await biodataCollection.find({ premiumRequest: true }).toArray();
+        //     res.send(result);
+        // });
 
 
 
@@ -414,41 +479,91 @@ async function run() {
 
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Update route section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        app.patch("/make-premium/:id", async (req, res) => {
-            const id = req.params.id;
-            const filter = { _id: new ObjectId(id) };
-            const update = {
-                $set: { isPremium: true },
-                $unset: { premiumRequest: "" },
-            };
-            const result = await biodataCollection.updateOne(filter, update);
-            res.send(result);
+        // app.patch("/make-premium/:id", async (req, res) => {
+        //     const id = req.params.id;
+        //     const filter = { _id: new ObjectId(id) };
+        //     const update = {
+        //         $set: { isPremium: true },
+        //         $unset: { premiumRequest: "" },
+        //     };
+        //     const result = await biodataCollection.updateOne(filter, update);
+        //     res.send(result);
+        // });
+
+        // ✅ Update bioId and premiumRequest for a user
+        app.patch("/biodata/request-premium/:email", async (req, res) => {
+            const email = req.params.email;
+            const { bioId } = req.body;
+
+            if (!bioId || !email) {
+                return res.status(400).send({ message: "Email and bioId are required" });
+            }
+
+            try {
+                const result = await userCollection.updateOne(
+                    { email: email },
+                    {
+                        $set: {
+                            premiumRequest: true,
+                            bioId: bioId
+                        }
+                    }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ message: "User not found or already requested" });
+                }
+
+                res.send({ message: "Premium request submitted", result });
+            } catch (error) {
+                res.status(500).send({ message: "Server error", error });
+            }
         });
 
-        // ✅ ইউজার প্রিমিয়াম রিকুয়েস্ট পাঠাবে
-        app.patch("/biodata/request-premium/:id", async (req, res) => {
-            const id = parseInt(req.params.id);
 
-            const result = await biodataCollection.updateOne(
-                { bioId: id },
-                { $set: { premiumRequest: true } }
-            );
+        // // ✅ এডমিন ইউজারের বায়োডাটা প্রিমিয়াম করে দিবে
+        // app.patch("/biodata/make-premium/:id", async (req, res) => {
+        //     const id = parseInt(req.params.id);
 
-            res.send(result);
-        });
+        //     const result = await biodataCollection.updateOne(
+        //         { bioId: id },
+        //         { $set: { isPremium: true, premiumRequest: false } }
+        //     );
 
+        //     res.send(result);
+        // });
 
-        // ✅ এডমিন ইউজারের বায়োডাটা প্রিমিয়াম করে দিবে
-        app.patch("/biodata/make-premium/:id", async (req, res) => {
-            const id = parseInt(req.params.id);
-
-            const result = await biodataCollection.updateOne(
-                { bioId: id },
-                { $set: { isPremium: true, premiumRequest: false } }
-            );
-
-            res.send(result);
-        });
+        app.post('/all-premium-members', async (req, res) => {
+            try {
+              const biodata = req.body;
+              if (!biodata || !biodata.email) {
+                return res.status(400).json({ message: 'Biodata with email is required' });
+              }
+          
+              // Check if user already exists
+              const existing = await premiumMembersCollection.findOne({ email: biodata.email });
+              if (existing) {
+                return res.status(409).json({ message: 'Member already exists' });
+              }
+          
+              const result = await premiumMembersCollection.insertOne(biodata);
+              res.status(201).json({ message: 'Premium member added', insertedId: result.insertedId });
+            } catch (error) {
+              console.error(error);
+              res.status(500).json({ message: 'Server error' });
+            }
+          });
+          
+          // GET route to get all premium members
+          app.get('/all-premium-members', async (req, res) => {
+            try {
+              const members = await premiumMembersCollection.find({}).toArray();
+              res.json(members);
+            } catch (error) {
+              console.error(error);
+              res.status(500).json({ message: 'Server error' });
+            }
+          });
 
 
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Delete section >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
