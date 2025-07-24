@@ -212,7 +212,7 @@ async function run() {
                     return res.status(404).send({ message: "User not found" });
                 }
 
-                res.send(user);
+              res.send(user);
             } catch (error) {
                 res.status(500).send({ message: "Server error", error });
             }
@@ -561,9 +561,10 @@ async function run() {
         app.post('/all-premium-members', async (req, res) => {
             try {
                 const biodata = req.body;
-                // if (!biodata || !biodata.email) {
-                //     return res.status(400).json({ message: 'Biodata with email is required' });
-                // }
+
+                if (!biodata || !biodata.email) {
+                    return res.status(400).json({ message: 'Biodata with email is required' });
+                }
 
                 // Check if user already exists
                 const existing = await premiumMembersCollection.findOne({ email: biodata.email });
