@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({origin: ["https://rishtamatrimony.netlify.app" ] , credentials: true }));
 app.use(express.json());
 
-// Firebase Admin Initialization
+// Firebase Admin Initialization -----
 const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf-8"));
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
