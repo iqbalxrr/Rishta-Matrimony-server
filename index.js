@@ -17,7 +17,7 @@ app.use(express.json());
 const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf-8"));
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
-// Firebase Token Verification Middleware
+// Firebase Token Verification Middleware ------
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
