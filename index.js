@@ -21,7 +21,7 @@ admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ message: "Unauthorized access -- No token found" });
+        return res.status(401).json({ message: "Unauthorized access  No token found" });
     }
     const token = authHeader.split(' ')[1];
     try {
